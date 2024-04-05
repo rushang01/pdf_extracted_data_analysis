@@ -1,8 +1,16 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 import os
-import sqlite3
 import fitz
+
+from augment_rank import rank_locations, rank_nature
+from date_and_time import augmentColummnWiseDataWithDateAndTime
+from emsstat import process_emsstat, set_EMSSTAT_to_false
+from geocoding import get_geocode_from_address
+from side_of_town import determine_side_of_town
+from weather import fetch_weather_for_incident
+ 
 
 def fetchincidents(url):
     """
@@ -13,6 +21,36 @@ def fetchincidents(url):
     with open(file_name, 'wb') as file:
         file.write(response.read())
     return file_name
+
+
+def augmentColummnWiseData(incidents):
+
+    addresses = [incident["location"] for incident in incidents]
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        geocodes = list(executor.map(get_geocode_from_address, addresses))
+
+     # Update incidents with geocodes
+    for incident, geocode in zip(incidents, geocodes):
+        incident["geocode"] = geocode
+
+    # Augment each incident with date and time first
+    for incident in incidents:
+        augmentColummnWiseDataWithDateAndTime(incident)
+        set_EMSSTAT_to_false(incident)
+
+    # Use ThreadPoolExecutor to fetch weather data in parallel
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        weather_results = list(executor.map(fetch_weather_for_incident, incidents))
+
+
+    # Augment incidents with fetched weather data and determine the side of town
+    for incident, weather_code in zip(incidents, weather_results):
+        incident["weather"] = weather_code
+        incident["side_of_town"] = determine_side_of_town(incident["location"], incident["geocode"])
+
+    incidents = process_emsstat(incidents)
+    return incidents
 
 
 def extract_incidents_from_pdf(pdf_path):
@@ -74,7 +112,10 @@ def extract_incidents_from_pdf(pdf_path):
                 previousBlockId = word[5]
    
     pdf_document.close()
+    # Filter out incidents with no set values
+    incidents = [incident for incident in incidents if any(incident.values())]
     return incidents
+
 
 def handle_multiple_lines(columnWise_data,index,line):
     if columnWise_data[index]:
@@ -82,85 +123,60 @@ def handle_multiple_lines(columnWise_data,index,line):
     else:
         columnWise_data[index] = line
 
-
-def createdb():
-    """
-    Create a SQLite database and return the connection object.
-    """
-    db_file = 'resources/normanpd.db'
-    # Check if the database file already exists, and if it does, delete it
-    if os.path.exists(db_file):
-        os.remove(db_file)
-    conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS incidents (
-                        incident_time TEXT,
-                        incident_number TEXT,
-                        incident_location TEXT,
-                        nature TEXT,
-                        incident_ori TEXT
-                      );''')
-    conn.commit()
-    return conn
-
-def populatedb(db, incidents):
-    """
-    Insert incident data into the database.
-    """
-    cursor = db.cursor()
-    # Convert each incident dictionary to a tuple in the correct order
-    incident_tuples = [
-        (incident["date_time"], incident["incident_number"], incident["location"], incident["nature"], incident["incident_ori"])
-        for incident in incidents
-        if any(incident.values())
-    ]
-    cursor.executemany('''INSERT INTO incidents 
-                          (incident_time, incident_number, incident_location, nature, incident_ori) 
-                          VALUES (?, ?, ?, ?, ?);''', incident_tuples)
-    db.commit()
-
-
-def status(db):
-    """
-    Print the nature of incidents and their count.
-    """
-    cursor = db.cursor()
-    cursor.execute('''SELECT nature, COUNT(*) as count 
-                      FROM incidents 
-                      GROUP BY nature 
-                      ORDER BY count DESC, nature;''')
-    results = cursor.fetchall()
-    blank_count = 0
-    for nature, count in results:
-        if nature:
-            print(f"{nature}|{count}")
-        else:
-            blank_count += count
-    if blank_count != 0:
-        print(f"|{blank_count}")
+def print_incidents(incidents):
     
+    for incident in incidents:
+        # Extract the required information from each incident
+        day_of_week = incident.get("day", "Unknown")
+        time_of_day = incident.get("hour", "Unknown")  
+        weather = incident.get("weather", "Unknown")
+        location_rank = incident.get("location_rank", "Unknown")
+        side_of_town = incident.get("side_of_town", "Unknown")
+        nature_rank = incident.get("nature_rank", "Unknown")  
+        nature = incident.get("nature", "Unknown")
+        emsstat = incident.get("EMSSTAT", False) 
 
-def main(url):
+        # Format the information as a tab-separated string
+        incident_str = f"{day_of_week}\t{time_of_day}\t{weather}\t{location_rank}\t{side_of_town}\t{nature_rank}\t{nature}\t{int(emsstat)}"
+        
+        # Print the formatted string
+        print(incident_str)
+
+
+def main(url,incidents):
     # Download data
     incident_data = fetchincidents(url)
 
     # Extract data
-    incidents = extract_incidents_from_pdf(incident_data)
+    new_incidents = extract_incidents_from_pdf(incident_data)
     
-    # Create new database
-    db = createdb()
+    #Augment data
+    new_incidents = augmentColummnWiseData(new_incidents)
+
+    return incidents + new_incidents
+
+
+def process_urls(urls_file):
+
+    incidents = []
+
+    #Process urls
+    with open(urls_file, 'r') as file:
+        urls = file.read()
+    urls = urls.split(",")
     
-    # Insert data
-    populatedb(db, incidents)
+    for url in urls:
+        incidents = main(url,incidents)
+
+    rank_locations(incidents)
+    rank_nature(incidents)
     
-    # Print incident counts
-    status(db)
+    print_incidents(incidents)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--incidents", type=str, required=True, 
-                        help="Incident summary url.")
-    
+    parser.add_argument("--urls", type=str, required=True, help="File containing incident summary URLs.")
     args = parser.parse_args()
-    if args.incidents:
-        main(args.incidents)
+
+    if args.urls:
+       process_urls(args.urls)
