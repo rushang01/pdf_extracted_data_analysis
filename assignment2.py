@@ -1,5 +1,6 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import re
 import urllib.request
 import os
 import fitz
@@ -163,10 +164,12 @@ def process_urls(urls_file):
     #Process urls
     with open(urls_file, 'r') as file:
         urls = file.read()
-    urls = urls.split(",")
+
+    urls = re.split(',|\n', urls) 
     
     for url in urls:
-        incidents = main(url,incidents)
+        if url:
+            incidents = main(url,incidents)
 
     rank_locations(incidents)
     rank_nature(incidents)

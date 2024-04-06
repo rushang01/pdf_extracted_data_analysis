@@ -1,3 +1,4 @@
+# cis6930sp24-assignment2
 # Norman PD Data Extraction README
 ## Developer Information
 Name: Rushang Sunil Chiplunkar
@@ -219,6 +220,7 @@ To run the program, follow these steps to set up your environment and execute th
 - **Geocode API Rate Limits**: The script may hit rate limits if processing a large number of incidents due to simultaneous geocode requests.
 - **Weather Data Accuracy**: The script assumes weather data fetched based on the incident date and location accurately reflects the conditions at the time of the incident. Discrepancies may occur, especially for incidents occurring on the cusp of changing weather conditions.
 - **Google Maps API Key Exposure**: If the API key is hardcoded within the script and the script is shared or made public, there's a risk of key exposure leading to unauthorized usage and potential cost implications.
+- **Missing Data**: Specific details such as exact weather conditions and side of town had to be inferred from external sources and depend on whether the geocodes are generated for the respective locations or not. If the geocode is not generated for a particular location, the weather code and side of town are given a value of "Unknown".
 
 
 ### Assumptions
@@ -227,5 +229,5 @@ To run the program, follow these steps to set up your environment and execute th
 - **Accuracy of External APIs**: The script assumes that the geocoding and weather APIs provide accurate and up-to-date information.
 - **Single Location Incidents**: The script assumes each incident report pertains to a single location - Norman, Oklahoma. Incidents spanning multiple locations may not be accurately represented.
 - **Uniformity in Incident Reporting**: It is assumed that all incidents are reported with a similar level of detail and accuracy, allowing for uniform processing and analysis.
-
-# cis6930sp24-assignment2
+- **Handling of timezones**: The script utilizes an automated approach for time zone adjustments by setting the timezone parameter to "auto" within the API request. This means that the weather data fetched for each incident is automatically adjusted to match the local time zone based on the provided geolocation coordinates.
+- **Geolocation Information**: When the script encounters an incident for which geolocation data (latitude and longitude) cannot be precisely determined due to limitations or failures in the geocoding process, it defaults to using the coordinates for Norman, Oklahoma (latitude = 35.2226, longitude = -97.4395). This decision ensures that weather data retrieval can still proceed by providing a fallback location, albeit with the implication that the weather data may not accurately represent the exact location of the incident if it occurred significantly outside this default area.
