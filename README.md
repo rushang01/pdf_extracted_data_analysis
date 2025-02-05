@@ -1,9 +1,9 @@
-# cis6930sp24-assignment2
+# Analysis of Extracted PDF Data
 # Norman PD Data Extraction README
 ## Developer Information
 Name: Rushang Sunil Chiplunkar
 
-# Assignment Description 
+# Description 
 ## Objective
 The objective of this project was to extract, process, and analyze incident data from publicly available PDF reports. The goal was to augment this data with additional contextual information such as weather conditions at the time of the incidents, geographical data (geocode), the day of the week, and time of the day. Furthermore, the project aimed to rank incidents based on the frequency of their nature and location, providing insights into common incident types and hotspots within the area of interest.
 
